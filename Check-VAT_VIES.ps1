@@ -3,6 +3,7 @@ param(
     $TIN,
     [switch]$NoPrint
 )
+    #Example TIN DE999999999 - country code following by VAT number
 	Write-Verbose "Original TIN $TIN"
 	$TIN = $TIN -replace "\W",""
 	Write-Verbose "Replaced TIN $TIN"
@@ -13,17 +14,21 @@ param(
 	Write-Verbose "TIN $TIN"
 	$tempFile = "$env:temp\vat.html"
 	Remove-Item $tempFile -Force -ErrorAction Ignore
-	try {		
+	try {
+        #Post code with country and vat number to check		        
 		$POST = "memberStateCode=$country&number=$vatnumber&action=check"
+        #invoke-webrequest and store results in a temp file
 		Invoke-WebRequest -Method Post -Body $POST -Uri 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html' -OutFile $tempFile
 		
 		$file = Get-Content $tempFile -Encoding UTF8
+        #replace href and src to display page correctly
 		$file = $file.replace('href="','href="http://ec.europa.eu') 
 		$file = $file.replace('src="','src="http://ec.europa.eu')
 		$file | Out-File $tempFile -Encoding UTF8
 		Write-Debug "File`n$($file | out-string)"
 		Write-Verbose "Open page $tempFile"
 		try {
+            #create new IE com object
 			Write-Verbose "Create new IE object"
 			$ie = New-Object -com InternetExplorer.Application 
 		    Write-Verbose "Set props"
@@ -51,13 +56,14 @@ param(
 		catch{
 			$Error[0]
 		}
-		
+		#create output object with results
 		$obj = New-Object Pscustomobject -Property @{
 			Date = Get-Date
 			NIP = $TIN
 			Result = $null
 			User = $env:Username
 		}
+        #check if page contains text
 		if ($file -match ("Yes, valid VAT number")) { 
 			$obj.Result = $true			
 		}
