@@ -3,6 +3,8 @@ param(
     $TIN,
     [switch]$NoPrint
 )
+	$uriVatRespone = 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html'
+	$uriSoap = 'http://ec.europa.eu/taxation_customs/vies/services/checkVatService'
     #Example TIN DE999999999 - country code following by VAT number
 	Write-Verbose "Original TIN $TIN"
 	$TIN = $TIN -replace "\W",""
@@ -13,13 +15,24 @@ param(
 	$vatnumber = $matches[2]
 	Write-Verbose "TIN $TIN"
 	$tempFile = "$env:temp\vat.html"
-	Remove-Item $tempFile -Force -ErrorAction Ignore
+	Remove-Item $tempFile -Force -ErrorAction Ignore	
 	try {
         #Post code with country and vat number to check		        
 		$POST = "memberStateCode=$country&number=$vatnumber&action=check"
         #invoke-webrequest and store results in a temp file
-		Invoke-WebRequest -Method Post -Body $POST -Uri 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html' -OutFile $tempFile
+		Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile
 		
+		$xmlSoap = '<?xml version="1.0" encoding="UTF-8"?>
+			<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
+			<soapenv:Header/>
+			<soapenv:Body>
+			    <urn:checkVat>
+			        <urn:countryCode>{0}</urn:countryCode>
+			        <urn:vatNumber>{1}</urn:vatNumber>
+			    </urn:checkVat>
+			</soapenv:Body>' -f $country, $vatnumber
+		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap
+			
 		$file = Get-Content $tempFile -Encoding UTF8
         #replace href and src to display page correctly
 		$file = $file.replace('href="','href="http://ec.europa.eu') 
@@ -63,15 +76,24 @@ param(
 			Result = $null
 			User = $env:Username
 		}
-        #check if page contains text
-		if ($file -match ("Yes, valid VAT number")) { 
-			$obj.Result = $true			
-		}
-		elseif ($file -match ("No, invalid VAT number")) { 
-			$obj.Result = $false			
+		#check if $SoapResults 
+		if (($SoapResults -as [XML]).envelope.body.checkvatresponse.valid){
+			Write-Verbose "No soap results. Check text in page"
+	        #check if page contains text
+			if ($file -match ("Yes, valid VAT number")) { 
+				$obj.Result = $true			
+			}
+			elseif ($file -match ("No, invalid VAT number")) { 
+				$obj.Result = $false			
+			}
+			else{
+				throw "Not expected results." 
+			}
 		}
 		else{
-			throw "Not expected results." 
+			Write-Verbose "Soap results"
+			Write-Debug "$(($SoapResults -as [XML]).envelope.body.checkvatresponse | Out-String)"
+			$obj.Result = ($SoapResults -as [XML]).envelope.body.checkvatresponse.valid
 		}
 		$obj			
 		#automate print
