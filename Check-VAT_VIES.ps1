@@ -1,7 +1,8 @@
 function Check-VAT_VIES {
 param(
     $TIN,
-    [switch]$NoPrint
+    [switch]$NoPrint,
+	[switch]$CheckOnly
 )
 	$uriVatRespone = 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html'
 	$uriSoap = 'http://ec.europa.eu/taxation_customs/vies/services/checkVatService'
@@ -17,11 +18,6 @@ param(
 	$tempFile = "$env:temp\vat.html"
 	Remove-Item $tempFile -Force -ErrorAction Ignore	
 	try {
-        #Post code with country and vat number to check		        
-		$POST = "memberStateCode=$country&number=$vatnumber&action=check"
-        #invoke-webrequest and store results in a temp file
-		Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile
-		
 		$xmlSoap = '<?xml version="1.0" encoding="UTF-8"?>
 			<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
 			<soapenv:Header/>
@@ -32,42 +28,48 @@ param(
 			    </urn:checkVat>
 			</soapenv:Body>' -f $country, $vatnumber
 		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap
-			
-		$file = Get-Content $tempFile -Encoding UTF8
-        #replace href and src to display page correctly
-		$file = $file.replace('href="','href="http://ec.europa.eu') 
-		$file = $file.replace('src="','src="http://ec.europa.eu')
-		$file | Out-File $tempFile -Encoding UTF8
-		Write-Debug "File`n$($file | out-string)"
-		Write-Verbose "Open page $tempFile"
-		try {
-            #create new IE com object
-			Write-Verbose "Create new IE object"
-			$ie = New-Object -com InternetExplorer.Application 
-		    Write-Verbose "Set props"
-			Write-Verbose "    AddressBar"
-			$ie.AddressBar = $false
-			Write-Verbose "    MenuBar"
-			$ie.MenuBar = $false
-			Write-Verbose "    ToolBar"
-			$ie.ToolBar = $false
-			Write-Verbose "    Visible"
-			$ie.visible=$true
-			Write-Verbose "Navigate to local page $env:temp\vat.html"
-		    $ie.navigate("$env:temp\vat.html")
-			Start-Sleep -Milliseconds 100
-			$iewait = 0
-		    while($ie.ReadyState -ne 4 -and $iewait -lt 50) {
-				Write-Verbose "$(Get-Date) IE Not ready ... sleep"
-				start-sleep -m 100
-				$iewait++
+		
+		if (-not $CheckOnly){
+	        #Post code with country and vat number to check		        
+			$POST = "memberStateCode=$country&number=$vatnumber&action=check"
+	        #invoke-webrequest and store results in a temp file
+			Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile
+			$file = Get-Content $tempFile -Encoding UTF8
+	        #replace href and src to display page correctly
+			$file = $file.replace('href="','href="http://ec.europa.eu') 
+			$file = $file.replace('src="','src="http://ec.europa.eu')
+			$file | Out-File $tempFile -Encoding UTF8
+			Write-Debug "File`n$($file | out-string)"
+			Write-Verbose "Open page $tempFile"
+			try {
+	            #create new IE com object
+				Write-Verbose "Create new IE object"
+				$ie = New-Object -com InternetExplorer.Application 
+			    Write-Verbose "Set props"
+				Write-Verbose "    AddressBar"
+				$ie.AddressBar = $false
+				Write-Verbose "    MenuBar"
+				$ie.MenuBar = $false
+				Write-Verbose "    ToolBar"
+				$ie.ToolBar = $false
+				Write-Verbose "    Visible"
+				$ie.visible=$true
+				Write-Verbose "Navigate to local page $env:temp\vat.html"
+			    $ie.navigate("$env:temp\vat.html")
+				Start-Sleep -Milliseconds 100
+				$iewait = 0
+			    while($ie.ReadyState -ne 4 -and $iewait -lt 50) {
+					Write-Verbose "$(Get-Date) IE Not ready ... sleep"
+					start-sleep -m 100
+					$iewait++
+				}
+				if ($iewait -ge 50){
+					throw "Wait time for IE too long."
+				}
 			}
-			if ($iewait -ge 50){
-				throw "Wait time for IE too long."
+			catch{
+				$Error[0]
 			}
-		}
-		catch{
-			$Error[0]
 		}
 		#create output object with results
 		$obj = New-Object Pscustomobject -Property @{
@@ -77,7 +79,7 @@ param(
 			User = $env:Username
 		}
 		#check if $SoapResults 
-		if (($SoapResults -as [XML]).envelope.body.checkvatresponse.valid){
+		if (-not ($SoapResults -as [XML]).envelope.body.checkvatresponse.valid){
 			Write-Verbose "No soap results. Check text in page"
 	        #check if page contains text
 			if ($file -match ("Yes, valid VAT number")) { 
@@ -97,7 +99,7 @@ param(
 		}
 		$obj			
 		#automate print
-		if (-not $NoPrint){
+		if (-not $NoPrint -and -not $CheckOnly){
 			try {
 				$ie.execWB(6,2)
 			}
