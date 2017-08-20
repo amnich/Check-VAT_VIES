@@ -92,7 +92,7 @@ param(
 		#create output object with results
 		$obj = New-Object Pscustomobject -Property @{
 			Date = Get-Date
-			NIP = $TIN
+			TIN = $TIN
 			Result = $null
 			User = $env:Username
 		}
