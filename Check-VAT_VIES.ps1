@@ -1,7 +1,11 @@
 function Check-VAT_VIES {
+[CmdletBinding()] 
 param(
-    $TIN,
-    [switch]$NoPrint,
+	[ValidatePattern('^[A-Za-z]{2}')]
+    	[string]$TIN,
+	[ValidatePattern('^[A-Za-z]{2}')]
+	[string]$CheckersTIN,
+    	[switch]$NoPrint,
 	[switch]$CheckOnly
 )
 	$uriVatRespone = 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html'
@@ -15,6 +19,16 @@ param(
 	Write-Verbose "Country $country"
 	$vatnumber = $matches[2]
 	Write-Verbose "TIN $TIN"
+	
+	if ($CheckersTIN){
+		$CheckersTIN = $CheckersTIN  -replace "\W",""
+		if ($CheckersTIN -match "(^\D*)(\d*)"){
+			$countryChecker = $matches[1].ToUpper()
+			Write-Verbose "Checkers Country $country"
+			$vatnumberChecker = $matches[2]
+			Write-Verbose "Checkers TIN $TIN"
+		}
+	}
 	$tempFile = "$env:temp\vat.html"
 	Remove-Item $tempFile -Force -ErrorAction Ignore	
 	try {
@@ -31,7 +45,11 @@ param(
 		
 		if (-not $CheckOnly){
 	        #Post code with country and vat number to check		        
-			$POST = "memberStateCode=$country&number=$vatnumber&action=check"
+			$POST = "memberStateCode=$country&number=$vatnumber"
+			if ($CheckersTIN){
+				$POST = "$POST&requesterMemberStateCode=$countryChecker&requesterNumber=$vatNumberChecker"
+			}
+			$POST = "$POST&action=check"
 	        #invoke-webrequest and store results in a temp file
 			Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile
 			$file = Get-Content $tempFile -Encoding UTF8
