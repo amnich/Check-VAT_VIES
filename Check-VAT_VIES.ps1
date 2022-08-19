@@ -41,7 +41,7 @@ param(
 			        <urn:vatNumber>{1}</urn:vatNumber>
 			    </urn:checkVat>
 			</soapenv:Body>' -f $country, $vatnumber
-		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap
+		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap -ContentType text/xml
 		
 		if (-not $CheckOnly){
 	        #Post code with country and vat number to check		        
