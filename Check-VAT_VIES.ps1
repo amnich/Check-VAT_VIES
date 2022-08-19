@@ -112,7 +112,7 @@ param(
 			</soapenv:Body>
            </soapenv:Envelope>' -f $country, $vatnumber
 		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap -ContentType "text/xml; charset=utf-8"
-				
+		try {		
 		if ($ShowInBrowser){
 	        #Post code with country and vat number to check		        
 			$POST = "memberStateCode=$country&number=$vatnumber"
@@ -159,6 +159,10 @@ param(
 				$Error[0]
 			}
 		}
+        }
+        catch{
+            $_
+        }
 		#create output object with results
 		$obj = New-Object Pscustomobject -Property ([ordered]@{
 			Date = Get-Date
