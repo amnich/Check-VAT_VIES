@@ -1,15 +1,84 @@
 function Check-VAT_VIES {
-[CmdletBinding()] 
+
+<#
+.Synopsis
+VIES VAT number validation - using SOAP service or also show the result in Browser and Print the results.
+
+.DESCRIPTION
+
+VIES VAT number validation - using SOAP service or also show the result in Browser and Print the results.
+
+.NOTES   
+Name: Check-VAT_VIES 
+Author: Adam Mnich
+Created: 2017.08.17
+Version: 1.2
+DateUpdated: 2022.08.19
+
+.LINK
+https://amnich.github.io/Check-VAT-VIES/
+
+.PARAMETER TIN
+Country code following by VAT number
+
+.PARAMETER CheckersTIN
+Country code following by VAT number
+
+.PARAMETER Print
+Print web page with results
+
+.PARAMETER Print
+Print web page with results
+
+.PARAMETER NoPrint
+left NoPrint for compatibility - if you want to print the page you have to use now -Print and -ShowInBrowser
+
+.PARAMETER ShowInBrowser
+Show results in browser
+
+.PARAMETER CheckOnly
+left for compatibility - if you want to show it in Browser use -ShowInBrowser
+
+.EXAMPLE
+Check-VAT_VIES -TIN DE99999999999 
+
+Date                TIN           User     Result
+----                ---           ----     ------
+2017-08-18 16:47:04 DE99999999999 user1    True
+
+Check TIN only.
+
+.EXAMPLE
+
+Check-VAT_VIES -TIN DE99999999999 -ShowInBrowser
+
+Date                TIN           User     Result
+----                ---           ----     ------
+2017-08-18 16:47:04 DE99999999999 user1    True
+
+Check TIN, show web page but don't print.
+
+#>
+
+
+[CmdletBinding(DefaultParameterSetName='Default')] 
 param(
-	[ValidatePattern('^[A-Za-z]{2}')]
-    	[string]$TIN,
-	[ValidatePattern('^[A-Za-z]{2}')]
+	[Parameter(Mandatory=$true,Position = 0)]
+	[ValidatePattern('[A-Za-z]{2}')]
+    [string]$TIN,
+	[Parameter(Position = 1)]
+	[ValidatePattern('[A-Za-z]{2}')]
 	[string]$CheckersTIN,
-    	[switch]$NoPrint,
-	[switch]$CheckOnly
+    [Parameter(ParameterSetName='Web')]
+	[switch]$Print,
+	[Parameter(ParameterSetName='Web')]
+	[switch]$NoPrint, 
+	[Parameter(ParameterSetName='Web',Mandatory=$true)]
+	[switch]$ShowInBrowser,
+	[switch]$CheckOnly #left for compatibility - if you want to show it in Browser use -ShowInBrowser
 )
-	$uriVatRespone = 'http://ec.europa.eu/taxation_customs/vies/vatResponse.html'
-	$uriSoap = 'http://ec.europa.eu/taxation_customs/vies/services/checkVatService'
+	$uriVatRespone = 'https://ec.europa.eu/taxation_customs/vies/vatResponse.html'
+	$uriSoap = 'https://ec.europa.eu/taxation_customs/vies/services/checkVatService'
     #Example TIN DE999999999 - country code following by VAT number
 	Write-Verbose "Original TIN $TIN"
 	$TIN = $TIN -replace "\W",""
@@ -40,10 +109,11 @@ param(
 			        <urn:countryCode>{0}</urn:countryCode>
 			        <urn:vatNumber>{1}</urn:vatNumber>
 			    </urn:checkVat>
-			</soapenv:Body>' -f $country, $vatnumber
-		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap -ContentType text/xml
-		
-		if (-not $CheckOnly){
+			</soapenv:Body>
+           </soapenv:Envelope>' -f $country, $vatnumber
+		$SoapResults = Invoke-WebRequest -Method Post -Uri $uriSoap -Body $xmlSoap -ContentType "text/xml; charset=utf-8"
+				
+		if ($ShowInBrowser){
 	        #Post code with country and vat number to check		        
 			$POST = "memberStateCode=$country&number=$vatnumber"
 			if ($CheckersTIN){
@@ -51,7 +121,7 @@ param(
 			}
 			$POST = "$POST&action=check"
 	        #invoke-webrequest and store results in a temp file
-			Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile
+			Invoke-WebRequest -Method Post -Body $POST -Uri $uriVatRespone -OutFile $tempFile 
 			$file = Get-Content $tempFile -Encoding UTF8
 	        #replace href and src to display page correctly
 			$file = $file.replace('href="','href="http://ec.europa.eu') 
@@ -90,12 +160,14 @@ param(
 			}
 		}
 		#create output object with results
-		$obj = New-Object Pscustomobject -Property @{
+		$obj = New-Object Pscustomobject -Property ([ordered]@{
 			Date = Get-Date
 			TIN = $TIN
 			Result = $null
+            Name = $null
+            Address = $null
 			User = $env:Username
-		}
+		})
 		#check if $SoapResults 
 		if (-not ($SoapResults -as [XML]).envelope.body.checkvatresponse.valid){
 			Write-Verbose "No soap results. Check text in page"
@@ -112,12 +184,15 @@ param(
 		}
 		else{
 			Write-Verbose "Soap results"
-			Write-Debug "$(($SoapResults -as [XML]).envelope.body.checkvatresponse | Out-String)"
-			$obj.Result = ($SoapResults -as [XML]).envelope.body.checkvatresponse.valid
+            $SoapBVatResponse = ($SoapResults.Content -as [XML]).envelope.body.checkvatresponse
+			Write-Debug "$($SoapBVatResponse | Out-String)"
+			$obj.Result = $SoapBVatResponse.valid
+            $obj.Name = $SoapBVatResponse.name
+            $obj.Address = $SoapBVatResponse.address
 		}
 		$obj			
 		#automate print
-		if (-not $NoPrint -and -not $CheckOnly){
+		if ($Print -and $ShowInBrowser){
 			try {
 				$ie.execWB(6,2)
 			}
